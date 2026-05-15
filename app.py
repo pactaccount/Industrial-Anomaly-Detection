@@ -95,8 +95,8 @@ if normal_file and test_file:
         # Reshape distances back into a spatial heatmap
         anomaly_map = distances.reshape(spatial_dims)
         
-        # Normalize and upscale the heatmap to the original image dimensions
-        anomaly_map = cv2.resize(anomaly_map, normal_img.size)
+        # Normalize and upscale the heatmap to the original test image dimensions
+        anomaly_map = cv2.resize(anomaly_map, test_img.size)
         anomaly_map = (anomaly_map - anomaly_map.min()) / (anomaly_map.max() - anomaly_map.min() + 1e-8)
         anomaly_map_uint8 = (anomaly_map * 255).astype(np.uint8)
         
