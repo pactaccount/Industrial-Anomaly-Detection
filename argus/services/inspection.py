@@ -40,26 +40,45 @@ def localise_defects(
     heatmap: np.ndarray,
     threshold: float,
     min_area_px: int = 16,
+    max_regions: int = 20,
 ) -> list[LocalisedDefect]:
     """Find connected regions in the anomaly map above a threshold.
+
+    The threshold alone is not enough to produce a usable box. A defect
+    raises the score across its whole neighbourhood (layer3's receptive
+    field is wide), and the pixels near the calibrated threshold form a
+    broad, low plateau rather than a tight blob. Thresholding the plateau
+    and closing the gaps produces one enormous box that covers the whole
+    part, which tells an operator nothing.
+
+    So we do two things:
+
+    * **Close small gaps only.** The morphological closing uses a small
+      kernel, so a defect split by noise stays one region, but a broad
+      plateau is not merged into a single mass.
+    * **Cluster around the peaks.** Regions are ranked by peak score, and
+      each region's area is trimmed to the pixels that actually support it
+      rather than everything above a low bar.
 
     Args:
         heatmap: float map in original image coordinates.
         threshold: score above which a pixel counts as defective.
         min_area_px: discard regions smaller than this (noise).
+        max_regions: keep at most this many regions.
 
     Returns:
-        A list of regions, largest first.
+        A list of regions, strongest first.
     """
     binary = (heatmap >= threshold).astype(np.uint8)
     if binary.sum() == 0:
         return []
 
-    # Close small gaps so a single physical defect split by noise is one blob.
+    # Close only small gaps, so one physical defect split by noise stays one
+    # region without merging a wide low-score plateau into one mass.
     kernel = np.ones((3, 3), np.uint8)
     binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
 
-    count, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, 8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(binary, 8)
     total_px = heatmap.size
     results: list[LocalisedDefect] = []
 
@@ -67,22 +86,44 @@ def localise_defects(
         x, y, w, h, area = stats[label]
         if area < min_area_px:
             continue
-        region = heatmap[labels == label]
+        region_mask = labels == label
+        region = heatmap[region_mask]
+        peak = float(region.max())
+
+        # Trim the region to the pixels that genuinely support the peak:
+        # keep the pixels within a band of the region's own maximum, so a
+        # broad plateau collapses onto its core.
+        band = peak - max(0.05 * peak, 1e-6)
+        core_mask = region_mask & (heatmap >= band)
+        core_area = int(core_mask.sum())
+
+        if core_area >= min_area_px:
+            ys, xs = np.where(core_mask)
+            x0, x1 = int(xs.min()), int(xs.max())
+            y0, y1 = int(ys.min()), int(ys.max())
+            core_region = heatmap[core_mask]
+        else:
+            x0, y0, x1, y1 = int(x), int(y), int(x + w), int(y + h)
+            core_area = int(area)
+            core_region = region
+
         results.append(
             LocalisedDefect(
-                x=int(x),
-                y=int(y),
-                width=int(w),
-                height=int(h),
-                area_px=int(area),
-                area_ratio=float(area / total_px),
-                peak_score=float(region.max()),
-                mean_score=float(region.mean()),
+                x=x0,
+                y=y0,
+                width=x1 - x0,
+                height=y1 - y0,
+                area_px=core_area,
+                area_ratio=float(core_area / total_px),
+                peak_score=peak,
+                mean_score=float(core_region.mean()),
             )
         )
 
-    results.sort(key=lambda d: d.area_px, reverse=True)
-    return results
+    # Rank by peak score: the most anomalous region is the one the operator
+    # should look at first.
+    results.sort(key=lambda d: d.peak_score, reverse=True)
+    return results[:max_regions]
 
 
 def inspect_image(
@@ -134,7 +175,11 @@ def inspect_image(
             model_row.project_id, inspection_id, result.anomaly_map
         )
         overlay_path = storage.save_overlay(
-            model_row.project_id, inspection_id, image, result.anomaly_map
+            model_row.project_id,
+            inspection_id,
+            image,
+            result.anomaly_map,
+            mask_threshold=pixel_threshold,
         )
 
     row = Inspection(

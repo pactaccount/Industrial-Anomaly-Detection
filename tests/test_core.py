@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from pathlib import Path
 from PIL import Image
 
 from argus.core.embeddings import PatchMaker
@@ -343,3 +344,77 @@ def test_config_hash_ignores_non_geometry_fields():
     a = ModelConfig(backbone="resnet18", input_size=256, coreset_percentage=0.1)
     b = ModelConfig(backbone="resnet18", input_size=256, coreset_percentage=0.5)
     assert a.hash() == b.hash()
+
+
+# ----------------------------------------------------------------------
+# Defect localisation
+# ----------------------------------------------------------------------
+
+
+def test_localise_defects_trims_a_broad_plateau():
+    """A wide low-score plateau must not become one enormous box.
+
+    A real defect raises the score across its whole receptive field, so
+    thresholding alone produces a region covering much of the part. The
+    localisation must trim that plateau onto its core.
+    """
+    from argus.services.inspection import localise_defects
+
+    heatmap = np.zeros((200, 200), dtype=np.float32)
+    # A broad plateau at 1.0 covering a large area...
+    heatmap[40:160, 40:160] = 1.0
+    # ...with a genuine peak in the middle.
+    heatmap[95:105, 95:105] = 5.0
+
+    defects = localise_defects(heatmap, threshold=0.9, min_area_px=4)
+    assert len(defects) == 1
+    d = defects[0]
+    # The box must be tight around the peak, not the whole plateau.
+    assert d.width < 40, f"box width {d.width} is still too wide"
+    assert d.height < 40, f"box height {d.height} is still too wide"
+    assert d.peak_score == pytest.approx(5.0)
+
+
+def test_localise_defects_ranks_by_peak_score():
+    from argus.services.inspection import localise_defects
+
+    heatmap = np.zeros((100, 100), dtype=np.float32)
+    heatmap[10:20, 10:20] = 2.0
+    heatmap[60:70, 60:70] = 9.0
+    defects = localise_defects(heatmap, threshold=1.0, min_area_px=4)
+    assert len(defects) == 2
+    assert defects[0].peak_score > defects[1].peak_score
+
+
+def test_localise_defects_returns_nothing_for_a_flat_map():
+    from argus.services.inspection import localise_defects
+
+    heatmap = np.zeros((50, 50), dtype=np.float32)
+    assert localise_defects(heatmap, threshold=1.0) == []
+
+
+# ----------------------------------------------------------------------
+# Overlay rendering
+# ----------------------------------------------------------------------
+
+
+def test_overlay_tints_the_anomalous_region(tmp_path):
+    """The overlay must mark the defect and leave the rest of the part visible."""
+    from argus.services.storage import save_overlay
+
+    image = Image.new("RGB", (100, 100), (10, 10, 10))
+    heatmap = np.zeros((100, 100), dtype=np.float32)
+    heatmap[40:60, 40:60] = 10.0
+
+    path = save_overlay("proj", "insp", image, heatmap, mask_threshold=5.0)
+    saved = Path(path)
+    # The overlay is written under the data root; find it via the API path.
+    from argus.db.session import get_data_dir
+
+    absolute = get_data_dir() / path
+    assert absolute.exists()
+    out = np.asarray(Image.open(absolute).convert("RGB")).astype(np.float32)
+    # The defect region must be tinted (red channel raised).
+    assert out[50, 50, 0] > out[50, 50, 1] + 40, "defect region was not tinted"
+    # The rest of the part must be essentially untouched.
+    assert abs(out[10, 10, 0] - 10) < 12, "background was tinted"

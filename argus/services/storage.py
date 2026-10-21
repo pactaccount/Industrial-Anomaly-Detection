@@ -91,10 +91,17 @@ def save_overlay(
     lo, hi = float(heat.min()), float(heat.max())
     norm = (heat - lo) / (hi - lo + 1e-8)
 
+    # The threshold may be given in raw score units (the model's calibrated
+    # pixel threshold) or in normalised units. Normalise it so both are
+    # comparable -- comparing a raw score against a 0-1 map would silently
+    # select nothing.
     if mask_threshold is None:
         # Highlight the top 2% of this image's scores, scaled so that the
         # strongest region reaches full tint.
         mask_threshold = float(np.quantile(norm, 0.98))
+    elif hi > lo:
+        mask_threshold = (mask_threshold - lo) / (hi - lo)
+
     scale = max(1e-6, 1.0 - mask_threshold)
     weight = np.clip((norm - mask_threshold) / scale, 0.0, 1.0) * alpha
 

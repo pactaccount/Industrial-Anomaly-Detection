@@ -64,6 +64,9 @@ class ModelConfig:
     # spread of the good-image scores. Trades recall for a lower false
     # reject rate on good parts.
     calibration_margin: float = 0.25
+    # Percentile of an image's own scores used as the relative floor for
+    # the defect mask. Higher is tighter; lower finds smaller defects.
+    relative_percentile: float = 0.995
 
     def embedding_config(self) -> EmbeddingConfig:
         return EmbeddingConfig(
@@ -143,6 +146,7 @@ class AnomalyDetector:
         self.config = config or ModelConfig()
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self._calibration_margin = self.config.calibration_margin
+        self.relative_percentile = self.config.relative_percentile
         self._embedder: MultiScaleEmbedder | None = None
         self.memory_bank: MemoryBank | None = None
         # Threshold on the image-level score. Set by calibrate().
@@ -532,11 +536,16 @@ class AnomalyDetector:
         #   2. the patch score is in the top slice of *this* image's own
         #      scores (a relative test), so the flag follows the genuinely
         #      extreme region rather than a broad elevated plateau.
+        #
+        # The relative floor is taken at a high percentile of this image's
+        # own scores. It is what keeps the mask tight: the calibrated
+        # absolute threshold is deliberately generous (it must not miss
+        # anything), so on its own it selects a wide fringe of the plateau.
         p_thresh = pixel_threshold if pixel_threshold is not None else self.pixel_threshold
         if p_thresh is None or p_thresh <= 0:
             p_thresh = float(np.quantile(original_map, 0.995))
 
-        relative_floor = float(np.quantile(original_map, 0.99))
+        relative_floor = float(np.quantile(original_map, self.relative_percentile))
         effective = np.maximum(p_thresh, relative_floor)
         defect_mask = original_map >= effective
         defect_ratio = float(defect_mask.mean())
