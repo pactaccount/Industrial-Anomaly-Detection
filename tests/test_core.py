@@ -14,7 +14,13 @@ from pathlib import Path
 from PIL import Image
 
 from argus.core.embeddings import PatchMaker
-from argus.core.evaluation import auroc, aupro, f1_at_threshold, make_synthetic_anomaly
+from argus.core.evaluation import (
+    aupro,
+    auroc,
+    f1_at_threshold,
+    make_synthetic_anomaly,
+    pixel_auroc,
+)
 from argus.core.memory_bank import greedy_coreset, knn_scores_excluding
 from argus.core.model import AnomalyDetector, ModelConfig
 from argus.core.preprocess import letterbox, preprocess_image
@@ -236,7 +242,42 @@ def test_aupro_prefers_correct_localisation():
     bad = np.ones((64, 64), dtype=np.float64)
 
     labels = np.array([True])
-    assert aupro(labels, [good]) > aupro(labels, [bad])
+    assert aupro(labels, [mask], [good]) > aupro(labels, [mask], [bad])
+
+
+def test_aupro_is_not_trivially_perfect():
+    """Scoring the ground truth against itself must not be how AUPRO is used.
+
+    A regression that passed the masks as their own predictions made every
+    category report AUPRO = 0.995, which looked like a strong result and
+    was in fact the metric measuring itself. A prediction in the wrong
+    place must score near zero.
+    """
+    mask = np.zeros((64, 64), dtype=bool)
+    mask[20:30, 20:30] = True
+
+    wrong = np.zeros((64, 64), dtype=np.float64)
+    wrong[50:60, 50:60] = 1.0
+
+    labels = np.array([True])
+    assert aupro(labels, [mask], [wrong]) < 0.05
+    # And a random prediction should land near chance.
+    rng = np.random.default_rng(0)
+    noise = rng.random((64, 64))
+    assert 0.3 < aupro(labels, [mask], [noise]) < 0.7
+
+
+def test_pixel_auroc_is_not_trivially_perfect():
+    """Pixel AUROC must be computed from the predictions, not the masks."""
+    mask = np.zeros((64, 64), dtype=bool)
+    mask[20:30, 20:30] = True
+    wrong = np.zeros((64, 64), dtype=np.float64)
+    wrong[50:60, 50:60] = 1.0
+    labels = np.array([True])
+    # A prediction disjoint from the true region ranks the anomalous pixels
+    # at chance, not perfectly. The key check is that it is not 1.0.
+    assert pixel_auroc(labels, [mask], [wrong]) < 0.6
+    assert pixel_auroc(labels, [mask], [mask.astype(float)]) == pytest.approx(1.0)
 
 
 def test_synthetic_anomaly_modifies_image_and_returns_mask():

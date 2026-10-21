@@ -63,7 +63,11 @@ def auroc(labels: np.ndarray, scores: np.ndarray) -> float:
     return float((sum_pos_ranks - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
 
 
-def aupro(labels: np.ndarray, masks: list[np.ndarray]) -> float:
+def aupro(
+    labels: np.ndarray,
+    masks: list[np.ndarray],
+    predictions: list[np.ndarray] | None = None,
+) -> float:
     """Area under the per-region ROC curve (PRO).
 
     The PRO metric, from the MVTec AD paper, is the standard way to compare
@@ -76,6 +80,11 @@ def aupro(labels: np.ndarray, masks: list[np.ndarray]) -> float:
     Args:
         labels: ``(N,)`` boolean, True for anomalous images.
         masks: list of ``(H, W)`` boolean ground-truth masks, one per image.
+        predictions: list of ``(H, W)`` float anomaly maps, one per image.
+            These are the model's predictions. If omitted, the masks are
+            used as the predictions, which measures the metric against
+            itself and always returns 1.0 -- that is useful only as a
+            sanity check on the metric, never as a reported result.
 
     Returns:
         The PRO value in ``[0, 1]``, or NaN if there are no anomalies.
@@ -86,35 +95,60 @@ def aupro(labels: np.ndarray, masks: list[np.ndarray]) -> float:
 
     thresholds = np.linspace(0, 1, 101)
     ratios = np.zeros(len(thresholds))
+    n_used = 0
 
     for idx in np.where(labels)[0]:
         mask = np.asarray(masks[idx]).astype(bool)
         if mask.sum() == 0:
             continue
+        if predictions is None:
+            pred = mask.astype(np.float64)
+        else:
+            pred = np.asarray(predictions[idx], dtype=np.float64)
         # Normalise the prediction map to [0, 1] over the whole image.
-        pred = masks[idx].astype(np.float64)
         pred = (pred - pred.min()) / (pred.max() - pred.min() + 1e-12)
         for t_idx, t in enumerate(thresholds):
             binary = pred >= t
             # Proportion of the ground-truth region that was found.
             found = (binary & mask).sum() / mask.sum()
             ratios[t_idx] += found
+        n_used += 1
 
-    n_anom = max(1, int(labels.sum()))
-    per_region = ratios / n_anom
+    if n_used == 0:
+        return float("nan")
+    per_region = ratios / n_used
     # PRO integrates over the FPR range, normalised to [0, 1].
     fpr = np.linspace(0, 1, len(thresholds))
     return float(np.trapezoid(per_region, fpr))
 
 
-def pixel_auroc(labels: np.ndarray, masks: list[np.ndarray]) -> float:
-    """Pixel-level AUROC, pooled over all images."""
+def pixel_auroc(
+    labels: np.ndarray,
+    masks: list[np.ndarray],
+    predictions: list[np.ndarray] | None = None,
+) -> float:
+    """Pixel-level AUROC, pooled over all images.
+
+    Args:
+        labels: ``(N,)`` boolean, True for anomalous images.
+        masks: list of ``(H, W)`` boolean ground-truth masks.
+        predictions: list of ``(H, W)`` float anomaly maps. If omitted the
+            masks are used as their own predictions, which always gives
+            1.0 and is not a real measurement.
+
+    Returns:
+        The pixel-level AUROC, or NaN if there is nothing to score.
+    """
     labels = np.asarray(labels).astype(bool)
     flat_labels: list[bool] = []
     flat_scores: list[float] = []
     for idx in range(len(labels)):
-        flat_labels.append(np.asarray(masks[idx]).astype(bool).ravel())
-        flat_scores.append(np.asarray(masks[idx]).ravel())
+        if predictions is None:
+            flat_labels.append(np.asarray(masks[idx]).astype(bool).ravel())
+            flat_scores.append(np.asarray(masks[idx]).ravel())
+        else:
+            flat_labels.append(np.asarray(masks[idx]).astype(bool).ravel())
+            flat_scores.append(np.asarray(predictions[idx]).ravel())
     if not flat_scores:
         return float("nan")
     return auroc(np.concatenate(flat_labels), np.concatenate(flat_scores))

@@ -126,8 +126,10 @@ def evaluate_category(
     pro_value = float("nan")
     if mask_paths:
         masks = load_ground_truth_masks(all_files, mask_paths, maps)
-        pixel_auroc_value = pixel_auroc(labels_arr, masks)
-        pro_value = aupro(labels_arr, masks)
+        # The predictions must be the model's anomaly maps -- scoring the
+        # ground-truth masks against themselves would always return 1.0.
+        pixel_auroc_value = pixel_auroc(labels_arr, masks, maps)
+        pro_value = aupro(labels_arr, masks, maps)
 
     # False positive rate on good images at the calibrated threshold.
     good_mask = ~labels_arr
