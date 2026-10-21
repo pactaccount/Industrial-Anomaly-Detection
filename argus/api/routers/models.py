@@ -385,3 +385,89 @@ def export_model(
         return FileResponse(
             out, filename=archive.name, media_type="application/zip"
         )
+
+
+@router.post("/{model_id}/drift", response_model=dict)
+def check_drift(
+    model_id: str,
+    auth: tuple = Depends(authenticate),
+    db: Session = Depends(get_db),
+    alpha: float = 0.05,
+    min_samples: int = 20,
+):
+    """Check whether the line has drifted away from the calibrated model.
+
+    The most common way an anomaly detection system fails in production is
+    not a bad model -- it is a good model whose threshold no longer fits
+    the line, because the lighting changed or a supplier changed material.
+    The score distribution of incoming good parts moving is the earliest
+    signal of that, well before the false reject rate becomes visible in
+    the review queue.
+
+    This compares the recent good-part scores against the baseline the
+    model was calibrated on, using a two-sample Kolmogorov-Smirnov test.
+
+    The baseline comes from the good parts scored since the last
+    calibration; if there are not enough, the model's own calibration
+    scores are used.
+    """
+    from sqlalchemy import desc, select
+
+    from ...db.models import Inspection
+    from ...services.drift import check_drift as _check_drift
+
+    _, project = auth
+    row = db.get(Model, model_id)
+    if row is None or row.project_id != project.id:
+        raise HTTPException(status_code=404, detail="Model not found")
+    if row.status != "ready":
+        raise HTTPException(status_code=400, detail="Model is not trained")
+
+    # Recent good-part scores: the most recent inspections that were not
+    # flagged. Those are parts the system considers normal, so their score
+    # distribution is the live baseline.
+    recent = db.execute(
+        select(Inspection)
+        .where(
+            Inspection.model_id == model_id,
+            Inspection.is_anomaly.is_(False),
+        )
+        .order_by(desc(Inspection.created_at))
+        .limit(2000)
+    ).scalars().all()
+
+    current_scores = [r.image_score for r in recent]
+
+    detector = registry.get(row)
+    baseline_scores = list(detector._good_scores)
+    if not baseline_scores:
+        raise HTTPException(
+            status_code=400,
+            detail="No calibration baseline is stored for this model. "
+            "Retrain or recalibrate it to establish one.",
+        )
+
+    report = _check_drift(
+        baseline_scores,
+        current_scores,
+        threshold=row.threshold,
+        alpha=alpha,
+        min_samples=min_samples,
+    )
+    return {
+        "model_id": model_id,
+        "drifted": report.drifted,
+        "ks_statistic": report.ks_statistic,
+        "critical_value": report.critical_value,
+        "alpha": report.alpha,
+        "baseline_n": report.baseline_n,
+        "current_n": report.current_n,
+        "baseline_mean": report.baseline_mean,
+        "current_mean": report.current_mean,
+        "mean_shift": report.mean_shift,
+        "shift_in_sigma": report.shift_in_sigma,
+        "baseline_false_reject_rate": report.baseline_false_reject_rate,
+        "projected_false_reject_rate": report.projected_false_reject_rate,
+        "notes": report.notes,
+        "summary": report.summary(),
+    }

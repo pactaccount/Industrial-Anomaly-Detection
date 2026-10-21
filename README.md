@@ -68,6 +68,32 @@ uvicorn argus.api.main:app --host 0.0.0.0 --port 8000
 open http://localhost:8000/console
 ```
 
+### Running it on a line
+
+```bash
+# Watch a folder the camera writes frames to
+export ARGUS_API_KEY=argus_...
+python scripts/gateway.py --model $MODEL_ID \
+    --watch /data/frames --out /data/verdicts --on-reject marker
+```
+
+The gateway waits for each file to stop changing before inspecting it
+(cameras write images in pieces), writes a verdict JSON next to each
+image, and drops a `<name>.REJECT` marker for the line to act on.
+
+### Choosing the operating point
+
+The threshold is a business decision, not a technical one: it trades
+recall against the false reject rate. Measure the tradeoff rather than
+guessing:
+
+```bash
+python scripts/sweep_threshold.py --data data/mvtec_ad --categories grid,pill,screw
+```
+
+The defaults (`quantile=0.95`, `margin=0.10`) were chosen from that sweep:
+they hold the false reject rate near 1% while keeping recall around 72%.
+
 ### Using the API
 
 ```bash

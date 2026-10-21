@@ -156,6 +156,9 @@ export const createReview = (payload) =>
 
 export const getReviewSummary = () => request("/reviews/summary");
 
+export const checkDrift = (modelId, alpha = 0.05) =>
+  request(`/models/${modelId}/drift?alpha=${alpha}`, { method: "POST" });
+
 export const validateModel = (modelId, files) => {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));

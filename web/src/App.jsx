@@ -4,6 +4,7 @@ import { StatTile, LineChart, BarChart, Histogram, DonutChart } from "./componen
 import { Icon, StatusPill, EmptyState, Toast } from "./components/Ui";
 import ReviewView from "./views/Review";
 import ValidationView from "./views/Validation";
+import DriftView from "./views/Drift";
 
 /* ------------------------------------------------------------------ */
 /* Views                                                               */
@@ -909,6 +910,7 @@ const NAV = [
   { id: "history", label: "History", icon: "history" },
   { id: "review", label: "Review", icon: "review" },
   { id: "validation", label: "Validation", icon: "settings" },
+  { id: "drift", label: "Drift", icon: "history" },
   { id: "keys", label: "API keys", icon: "key" },
 ];
 
@@ -1113,6 +1115,8 @@ export default function App() {
             <ReviewView models={models} onRefresh={refresh} />
           ) : view === "validation" ? (
             <ValidationView models={models} />
+          ) : view === "drift" ? (
+            <DriftView models={models} />
           ) : (
             <ApiKeysView />
           )}
