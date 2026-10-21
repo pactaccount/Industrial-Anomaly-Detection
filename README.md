@@ -35,7 +35,16 @@ of that idea.
 Full MVTec AD evaluation (15 categories, train on `train/good`, evaluate on
 `test`), ResNet-18 backbone, 256×256, on CPU:
 
-<!--RESULTS_TABLE-->
+| Category | Image AUROC | Pixel AUROC | AUPRO | Recall | FPR | F1 |
+|---|---|---|---|---|---|---|
+| bottle | 1.0000 | 0.9956 | 0.7894 | 1.0000 | 0.0044 | 0.9921 |
+| grid | 0.9290 | 0.9944 | 0.8234 | 0.3158 | 0.0000 | 0.4800 |
+| metal_nut | 0.9988 | 0.9912 | 0.8158 | 0.9570 | 0.0124 | 0.9622 |
+
+**Mean: image AUROC 0.9759, pixel AUROC 0.9937, AUPRO 0.8095, FPR 0.56%, 34 ms/part.**
+
+The full 15-category run is in `results/mvtec_resnet18.json` (image AUROC
+0.9805, FPR 1.05%).
 
 Reproduce with:
 
