@@ -1,7 +1,23 @@
+# Python
 venv/
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Data & artefacts (never commit model weights or customer data)
+data/
+results/
+*.log
+*.db
+*.db-wal
+*.db-shm
+
+# Web
+web/node_modules/
+web/dist/
+web/.vite/
+
+# OS
 .DS_Store
-*.jpg
-*.jpeg
-*.png
