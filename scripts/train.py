@@ -43,11 +43,11 @@ def main() -> None:
         default="quantile",
         choices=["quantile", "mean_std", "max"],
     )
-    parser.add_argument("--quantile", type=float, default=0.99)
+    parser.add_argument("--quantile", type=float, default=0.95)
     parser.add_argument(
         "--margin",
         type=float,
-        default=0.25,
+        default=0.10,
         help="Safety margin added to the threshold, as a fraction of the "
         "good-score spread. Trades recall for a lower false reject rate.",
     )

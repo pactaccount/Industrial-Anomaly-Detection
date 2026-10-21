@@ -57,7 +57,7 @@ class ModelCreate(BaseModel):
     coreset_percentage: float = Field(0.1, gt=0, le=1.0)
     n_nearest_neighbours: int = Field(1, ge=1, le=16)
     calibration: str = "quantile"
-    quantile: float = Field(0.99, ge=0.5, le=1.0)
+    quantile: float = Field(0.95, ge=0.5, le=1.0)
 
 
 class ModelOut(BaseModel):

@@ -63,7 +63,7 @@ def evaluate_category(
     fit_seconds = time.perf_counter() - start
 
     # Calibrate the threshold from the good training images.
-    calib = detector.calibrate(method="quantile", quantile=0.99)
+    calib = detector.calibrate(method="quantile", quantile=0.95)
 
     # Collect the test set, using the manifest when available so that each
     # image is paired with its ground-truth mask.

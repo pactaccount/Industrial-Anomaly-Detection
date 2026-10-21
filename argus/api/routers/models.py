@@ -235,7 +235,7 @@ def recalibrate(
     auth: tuple = Depends(authenticate),
     db: Session = Depends(get_db),
     method: str = "quantile",
-    quantile: float = 0.99,
+    quantile: float = 0.95,
 ) -> Model:
     """Recalibrate the threshold without retraining.
 

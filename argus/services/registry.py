@@ -109,7 +109,7 @@ def train_model(
     version: int = 1,
     model_id: str | None = None,
     calibration: str = "quantile",
-    quantile: float = 0.99,
+    quantile: float = 0.95,
 ) -> tuple[Model, AnomalyDetector]:
     """Train a model on good images and persist it.
 
