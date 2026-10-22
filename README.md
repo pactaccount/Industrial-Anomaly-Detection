@@ -32,20 +32,13 @@ of that idea.
 
 ## Measured results
 
-Full MVTec AD evaluation (15 categories, train on `train/good`, evaluate on
-`test`), ResNet-18 backbone, 256×256, on CPU:
-
-| Category | Image AUROC | Pixel AUROC | AUPRO | Recall | FPR | F1 |
-|---|---|---|---|---|---|---|
-| bottle | 1.0000 | 0.9956 | 0.7894 | 1.0000 | 0.0044 | 0.9921 |
-| grid | 0.9290 | 0.9944 | 0.8234 | 0.3158 | 0.0000 | 0.4800 |
-| metal_nut | 0.9988 | 0.9912 | 0.8158 | 0.9570 | 0.0124 | 0.9622 |
-
-**Mean: image AUROC 0.9759, pixel AUROC 0.9937, AUPRO 0.8095, FPR 0.56%, 34 ms/part.**
-
-The [publishable 15-category summary](docs/benchmark_summary.json) records
-image AUROC 0.9805 and FPR 1.05%, with per-category counts and metrics. The
-raw result file remains local because `results/` is ignored by Git.
+The [15-category MVTec AD summary](docs/benchmark_summary.json) records
+**0.9805 mean image AUROC, 1.05% mean good-image false-positive rate, and
+34.4 ms/image** for a ResNet-18 backbone at 256×256 on CPU. It includes
+per-category sample counts and scores, the evaluation protocol, and a SHA-256
+of the local raw output. This is the run to cite in a résumé. Earlier
+exploratory runs in this repository used different settings and must not be
+combined with this summary.
 
 Reproduce with:
 
@@ -182,9 +175,9 @@ operation, not a retraining project.
 pixels. Argus letterboxes to preserve aspect ratio and maps the heatmap
 back through the same transform.
 
-### Compared against the original implementation
+### Exploratory comparison against the original implementation
 
-The rebuild is A/B'd against the original demo's algorithm, re-implemented
+The rebuild was compared locally against the original demo's algorithm, re-implemented
 faithfully in `scripts/compare_baseline.py` (single-image memory bank,
 224×224 squash, avg-pooled features, no threshold) and run over the same
 data and split. The baseline is given the most favourable defensible
@@ -197,10 +190,9 @@ threshold — the worst good training image — so it is not handicapped.
 | Precision | 0.7650 | **0.9668** | **+0.2018** |
 | False reject rate | 0.2070 | **0.1014** | −0.1056 |
 
-Mean over all 15 MVTec AD categories. The original misses half the
-defects it detects — it is not a slightly worse detector, it is close to
-unusable: on `grid` it scores 0.4987 AUROC, which is *worse than a coin
-flip*, and on `screw` 0.4708.
+These numbers are from a separate exploratory run whose raw comparison output
+is not published. Reproduce and publish that artifact before citing the
+deltas externally. They do not describe the published 0.9805 AUROC run.
 
 Reproduce with:
 
@@ -370,3 +362,7 @@ pytest tests/ -q          # API + engine tests
 * Roth et al., *EfficientAD* (I. Roth, M. K. Paul), and the LOCO logical-anomaly results
 * Szklarzewski et al., *From Benchmark Performance to Tool Deployment*, the human-in-the-loop case — [arXiv:2608.07770](https://arxiv.org/abs/2608.07770)
 * Pemula et al., *RobustAD*, capture-shift robustness — [arXiv:2505.18739](https://arxiv.org/abs/2505.18739)
+
+## Résumé evidence
+
+[Résumé evidence and verification](docs/RESUME_EVIDENCE.md) records the use case, engineering approach, test status, measured results, limits, and safe résumé wording.
