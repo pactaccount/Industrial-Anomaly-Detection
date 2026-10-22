@@ -1,0 +1,135 @@
+{
+  "source": "Local MVTec AD benchmark run; source artifact retained outside Git",
+  "source_sha256": "7fe53c2eab5e503671d99883b164365742f42d66c8f5a104a3c4301a708ae68a",
+  "protocol": "Train on train/good and evaluate on test; see scripts/evaluate_mvtec.py",
+  "backbone": "resnet18",
+  "input_size": 256,
+  "coreset_percentage": 0.1,
+  "category_count": 15,
+  "mean_image_auroc": 0.980541458841527,
+  "mean_good_fpr": 0.010517722289805647,
+  "mean_latency_ms": 34.403604365553356,
+  "categories": [
+    {
+      "name": "bottle",
+      "n_train": 209,
+      "n_test": 292,
+      "image_auroc": 1.0,
+      "good_image_fpr": 0.004366812227074236,
+      "mean_latency_ms": 34.135737596119576
+    },
+    {
+      "name": "cable",
+      "n_train": 224,
+      "n_test": 374,
+      "image_auroc": 0.9780296022201665,
+      "good_image_fpr": 0.014184397163120567,
+      "mean_latency_ms": 34.52524189982952
+    },
+    {
+      "name": "capsule",
+      "n_train": 219,
+      "n_test": 351,
+      "image_auroc": 0.975926908787626,
+      "good_image_fpr": 0.012396694214876033,
+      "mean_latency_ms": 35.568110877647996
+    },
+    {
+      "name": "carpet",
+      "n_train": 280,
+      "n_test": 397,
+      "image_auroc": 0.995622355172917,
+      "good_image_fpr": 0.012987012987012988,
+      "mean_latency_ms": 35.80864208459535
+    },
+    {
+      "name": "grid",
+      "n_train": 264,
+      "n_test": 342,
+      "image_auroc": 0.9289627577716221,
+      "good_image_fpr": 0.0,
+      "mean_latency_ms": 33.85513598301546
+    },
+    {
+      "name": "hazelnut",
+      "n_train": 391,
+      "n_test": 501,
+      "image_auroc": 0.9996353994033809,
+      "good_image_fpr": 0.002320185614849188,
+      "mean_latency_ms": 36.01639408619606
+    },
+    {
+      "name": "leather",
+      "n_train": 245,
+      "n_test": 369,
+      "image_auroc": 1.0,
+      "good_image_fpr": 0.02527075812274368,
+      "mean_latency_ms": 35.95678512793196
+    },
+    {
+      "name": "metal_nut",
+      "n_train": 220,
+      "n_test": 335,
+      "image_auroc": 0.9988447525104417,
+      "good_image_fpr": 0.012396694214876033,
+      "mean_latency_ms": 33.587466665967575
+    },
+    {
+      "name": "pill",
+      "n_train": 267,
+      "n_test": 434,
+      "image_auroc": 0.9210418028223561,
+      "good_image_fpr": 0.0034129692832764505,
+      "mean_latency_ms": 35.116402463304
+    },
+    {
+      "name": "screw",
+      "n_train": 320,
+      "n_test": 480,
+      "image_auroc": 0.9721129449009521,
+      "good_image_fpr": 0.00554016620498615,
+      "mean_latency_ms": 36.73082934243818
+    },
+    {
+      "name": "tile",
+      "n_train": 230,
+      "n_test": 347,
+      "image_auroc": 0.9737914177077676,
+      "good_image_fpr": 0.0038022813688212928,
+      "mean_latency_ms": 34.36557863089484
+    },
+    {
+      "name": "toothbrush",
+      "n_train": 60,
+      "n_test": 102,
+      "image_auroc": 0.9930555555555556,
+      "good_image_fpr": 0.027777777777777776,
+      "mean_latency_ms": 27.62634227139072
+    },
+    {
+      "name": "transistor",
+      "n_train": 213,
+      "n_test": 313,
+      "image_auroc": 0.9872710622710623,
+      "good_image_fpr": 0.007326007326007326,
+      "mean_latency_ms": 35.70680606001155
+    },
+    {
+      "name": "wood",
+      "n_train": 247,
+      "n_test": 326,
+      "image_auroc": 0.9989348370927318,
+      "good_image_fpr": 0.011278195488721804,
+      "mean_latency_ms": 33.46746588915735
+    },
+    {
+      "name": "zipper",
+      "n_train": 240,
+      "n_test": 391,
+      "image_auroc": 0.9848924864063272,
+      "good_image_fpr": 0.014705882352941176,
+      "mean_latency_ms": 33.58712650480015
+    }
+  ],
+  "limitations": "Benchmark only. No production camera, SKU, or held-out factory validation."
+}

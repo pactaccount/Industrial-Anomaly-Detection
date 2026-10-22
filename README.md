@@ -43,8 +43,9 @@ Full MVTec AD evaluation (15 categories, train on `train/good`, evaluate on
 
 **Mean: image AUROC 0.9759, pixel AUROC 0.9937, AUPRO 0.8095, FPR 0.56%, 34 ms/part.**
 
-The full 15-category run is in `results/mvtec_resnet18.json` (image AUROC
-0.9805, FPR 1.05%).
+The [publishable 15-category summary](docs/benchmark_summary.json) records
+image AUROC 0.9805 and FPR 1.05%, with per-category counts and metrics. The
+raw result file remains local because `results/` is ignored by Git.
 
 Reproduce with:
 
