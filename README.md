@@ -181,6 +181,32 @@ operation, not a retraining project.
 pixels. Argus letterboxes to preserve aspect ratio and maps the heatmap
 back through the same transform.
 
+### Compared against the original implementation
+
+The rebuild is A/B'd against the original demo's algorithm, re-implemented
+faithfully in `scripts/compare_baseline.py` (single-image memory bank,
+224×224 squash, avg-pooled features, no threshold) and run over the same
+data and split. The baseline is given the most favourable defensible
+threshold — the worst good training image — so it is not handicapped.
+
+| Metric | Original | Rebuild | Delta |
+|---|---|---|---|
+| Image AUROC | 0.7428 | **0.9821** | **+0.2393** |
+| Recall | 0.5052 | **0.9212** | **+0.4161** |
+| Precision | 0.7650 | **0.9668** | **+0.2018** |
+| False reject rate | 0.2070 | **0.1014** | −0.1056 |
+
+Mean over all 15 MVTec AD categories. The original misses half the
+defects it detects — it is not a slightly worse detector, it is close to
+unusable: on `grid` it scores 0.4987 AUROC, which is *worse than a coin
+flip*, and on `screw` 0.4708.
+
+Reproduce with:
+
+```bash
+python scripts/compare_baseline.py --data data/mvtec_ad --categories all
+```
+
 ---
 
 ## What this product is for
