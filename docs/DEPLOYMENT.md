@@ -1,5 +1,10 @@
 # Deployment guide
 
+**Status (October 2026):** This is an unqualified research prototype. The
+local metal-nut demo and API were verified, but Docker, real camera capture,
+gateway recovery, and factory performance have not been verified. Treat the
+following as a pilot checklist, not an installed production system.
+
 Argus is designed to run on a factory network, on a box near the line. This
 guide covers the two deployment shapes that matter, and — more importantly —
 the commissioning steps that decide whether the deployment succeeds.
@@ -20,10 +25,9 @@ SQLite for the database. Everything in one directory.
 | Disk | 20 GB | 100 GB SSD |
 | GPU | none | any NVIDIA GPU for line rate |
 
-**Why no GPU is acceptable.** Inference is ~34 ms/part on CPU with
-ResNet-18, which covers a part every 34 ms — far beyond most line rates.
-A GPU is needed for line-rate imaging (thousands of parts/hour) or a large
-memory bank, not for normal inspection.
+**CPU result.** The corrected local metal-nut run averaged 31.7 ms/image at
+256 px on CPU. That is model inference time, not camera-to-decision latency;
+measure end-to-end p95 on the intended line hardware.
 
 **Install**
 
@@ -52,10 +56,9 @@ KEY=$(curl -s -X POST http://localhost:8000/api/v1/projects/keys \
 For a plant with several lines, or where the console needs to be reachable
 from the corporate network.
 
-* **Line-side**: a small service watches a folder or an RTSP stream and
-  POSTs frames to the central API. This is the main missing piece of
-  Stage 1 (see the [product plan](PRODUCT_PLAN.md)) — until it exists, the
-  integration is a dozen lines of Python per customer.
+* **Line-side**: `scripts/gateway.py` watches a folder or an RTSP stream and
+  POSTs frames to the central API. This code has not been tested with a real
+  camera or PLC; check recovery and duplicate handling before a pilot.
 * **Central**: the API and console, on Postgres, with model training
   offloaded to a GPU node.
 

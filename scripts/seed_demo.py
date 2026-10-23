@@ -1,8 +1,8 @@
-"""Seed a demo project with real models and inspection history.
+"""Seed a local demo with a real model and disjoint test inspections.
 
-Creates a project, an API key, a couple of trained models (using MVTec AD
-images if available) and a batch of inspection records, so the console has
-something real to show.
+Creates a project, an API key, a model fitted on MVTec AD train/good, and
+inspection records from test/good and test/defects. The console is a research
+demo, not a public deployment or factory qualification.
 
 Usage::
 
@@ -12,8 +12,6 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import io
-import random
 import shutil
 import sys
 import tempfile
@@ -24,7 +22,6 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from argus.api.auth import generate_api_key  # noqa: E402
-from argus.core.evaluation import make_synthetic_anomaly  # noqa: E402
 from argus.core.model import ModelConfig  # noqa: E402
 from argus.db.models import ApiKey, Project  # noqa: E402
 from argus.db.session import init_db, session_scope  # noqa: E402
@@ -68,7 +65,7 @@ def train_from_directory(
     part_number: str,
     line: str,
     backbone: str,
-    max_images: int = 40,
+    max_images: int = 220,
 ):
     """Train a model on the good images in a directory."""
     config = ModelConfig(backbone=backbone, input_size=256, coreset_percentage=0.1)
@@ -89,27 +86,18 @@ def train_from_directory(
     return row, detector
 
 
-def seed_inspections(project_id: str, model_row, good_dir: Path, n: int = 40):
-    """Run inspections over a mix of good and synthetically-defective parts."""
-    import numpy as np
-
-    rng = np.random.default_rng(11)
-    good_files = sorted(good_dir.glob("*.png"))[:20]
-    if not good_files:
+def seed_inspections(project_id: str, model_row, test_dir: Path, n: int = 12):
+    """Show held-out good and real defective test parts in the console."""
+    good_files = sorted((test_dir / "good").glob("*.png"))
+    bad_files = sorted(p for p in test_dir.rglob("*.png") if p.parent.name != "good")
+    if not good_files or not bad_files:
         return 0
-
+    half = max(1, n // 2)
+    files = good_files[:half] + bad_files[: n - half]
     count = 0
-    for i in range(n):
-        src = good_files[int(rng.integers(0, len(good_files)))]
+    for src in files:
         with Image.open(src) as img:
             image = img.convert("RGB")
-        # Roughly a third of the batch carries an injected defect.
-        if rng.random() < 0.35:
-            array = _to_array(image)
-            array, _ = make_synthetic_anomaly(
-                array, rng, severity=float(rng.uniform(0.3, 0.8)), kind="mixed"
-            )
-            image = Image.fromarray(array)
         with session_scope() as db:
             from argus.db.models import Model
 
@@ -118,17 +106,11 @@ def seed_inspections(project_id: str, model_row, good_dir: Path, n: int = 40):
                 db=db,
                 model_row=live,
                 image=image,
-                source="demo-seed",
+                source=f"mvtec-test/{src.parent.name}",
                 save_artifacts=True,
             )
         count += 1
     return count
-
-
-def _to_array(image: Image.Image):
-    import numpy as np
-
-    return np.asarray(image.convert("RGB"))
 
 
 def main() -> None:
@@ -141,7 +123,7 @@ def main() -> None:
     )
     parser.add_argument("--name", default="Demo Plant")
     parser.add_argument("--data-dir", default=None, help="Where to write the API key file")
-    parser.add_argument("--inspections", type=int, default=40)
+    parser.add_argument("--inspections", type=int, default=12)
     args = parser.parse_args()
 
     init_db()
@@ -186,7 +168,7 @@ def main() -> None:
             f"threshold {row.threshold:.3f}, bank {row.memory_bank_size:,} vectors"
         )
 
-        n = seed_inspections(project_id, row, good_dir, n=args.inspections // len(categories))
+        n = seed_inspections(project_id, row, data_root / category / "test", n=args.inspections // len(categories))
         print(f"  seeded {n} inspections")
 
 

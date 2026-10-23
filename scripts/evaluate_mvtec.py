@@ -14,9 +14,12 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -42,6 +45,52 @@ def list_categories(data_root: Path) -> list[str]:
     )
 
 
+def collect_test_samples(cat_dir: Path) -> tuple[list[Path], list[Path], dict[Path, Path]]:
+    """Read the official test split; fail closed on bad manifests or leakage."""
+    train_dir = cat_dir / "train" / "good"
+    test_dir = cat_dir / "test"
+    manifest = load_manifest(cat_dir)
+    good_files: list[Path] = []
+    bad_files: list[Path] = []
+    mask_paths: dict[Path, Path] = {}
+    if manifest:
+        for entry in manifest:
+            if entry.get("split") not in {"train", "test"}:
+                raise ValueError(f"Unknown manifest split: {entry.get('split')}")
+            if entry.get("split") != "test":
+                continue
+            image_path = (cat_dir / entry["image"]).resolve()
+            if not image_path.is_relative_to(test_dir.resolve()) or not image_path.is_file():
+                raise ValueError(f"Invalid test image in manifest: {image_path}")
+            defect = image_path.parent.name
+            if defect != entry["defect"]:
+                raise ValueError(f"Defect label disagrees with path: {image_path}")
+            (good_files if defect == "good" else bad_files).append(image_path)
+            if defect != "good" and entry.get("mask"):
+                mask = (cat_dir / entry["mask"]).resolve()
+                if not mask.is_relative_to((cat_dir / "ground_truth").resolve()) or not mask.is_file():
+                    raise ValueError(f"Invalid ground-truth mask: {mask}")
+                mask_paths[image_path] = mask
+    else:
+        for defect_dir in sorted(test_dir.iterdir()):
+            if defect_dir.is_dir():
+                files = sorted(p.resolve() for p in defect_dir.iterdir() if p.suffix.lower() in {".png", ".jpg", ".jpeg"})
+                (good_files if defect_dir.name == "good" else bad_files).extend(files)
+        for image_path in bad_files:
+            candidate = cat_dir / "ground_truth" / image_path.parent.name / f"{image_path.stem}_mask.png"
+            if candidate.is_file():
+                mask_paths[image_path] = candidate.resolve()
+    if not good_files or not bad_files:
+        raise ValueError(f"Need both good and defective test images in {cat_dir}")
+    files = good_files + bad_files
+    if len(files) != len(set(files)):
+        raise ValueError("Duplicate test paths")
+    train_hashes = {hashlib.sha256(p.read_bytes()).digest() for p in train_dir.iterdir() if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg"}}
+    if any(hashlib.sha256(p.read_bytes()).digest() in train_hashes for p in files):
+        raise ValueError("Train/test content overlap detected")
+    return good_files, bad_files, mask_paths
+
+
 def evaluate_category(
     data_root: Path,
     category: str,
@@ -51,11 +100,15 @@ def evaluate_category(
     """Train on the good split and evaluate on the test split."""
     cat_dir = data_root / category
     train_dir = cat_dir / "train" / "good"
-    test_dir = cat_dir / "test"
-
     train_files = sorted(train_dir.glob("*.png")) + sorted(train_dir.glob("*.jpg"))
     if not train_files:
         raise ValueError(f"No training images for {category}")
+
+    good_files, bad_files, mask_paths = collect_test_samples(cat_dir)
+    if max_test:
+        good_files = good_files[:max_test]
+        bad_files = bad_files[:max_test]
+        mask_paths = {p: m for p, m in mask_paths.items() if p in bad_files}
 
     detector = AnomalyDetector(config)
     start = time.perf_counter()
@@ -64,40 +117,6 @@ def evaluate_category(
 
     # Calibrate the threshold from the good training images.
     calib = detector.calibrate(method="quantile", quantile=0.95)
-
-    # Collect the test set, using the manifest when available so that each
-    # image is paired with its ground-truth mask.
-    manifest = load_manifest(cat_dir)
-    good_files: list[Path] = []
-    bad_files: list[Path] = []
-    mask_paths: dict[Path, Path] = {}
-
-    if manifest:
-        for entry in manifest:
-            image_path = cat_dir / entry["image"]
-            if not image_path.exists():
-                continue
-            if entry["defect"] == "good":
-                good_files.append(image_path)
-            else:
-                bad_files.append(image_path)
-                if entry.get("mask"):
-                    mask_path = cat_dir / entry["mask"]
-                    if mask_path.exists():
-                        mask_paths[image_path] = mask_path
-    else:
-        for defect_dir in sorted(test_dir.iterdir()):
-            if not defect_dir.is_dir():
-                continue
-            files = sorted(defect_dir.glob("*.png")) + sorted(defect_dir.glob("*.jpg"))
-            if defect_dir.name == "good":
-                good_files.extend(files)
-            else:
-                bad_files.extend(files)
-
-    if max_test:
-        good_files = good_files[:max_test]
-        bad_files = bad_files[:max_test]
 
     labels: list[bool] = []
     scores: list[float] = []
@@ -111,7 +130,13 @@ def evaluate_category(
         result = detector.score(image)
         labels.append(path.parent.name != "good")
         scores.append(result.image_score)
-        maps.append(result.anomaly_map)
+        # Evaluate localisation at the network input resolution. This keeps
+        # benchmark memory bounded and states the resolution of the claim.
+        import cv2
+
+        maps.append(cv2.resize(result.anomaly_map.astype(np.float32),
+                               (config.input_size, config.input_size),
+                               interpolation=cv2.INTER_LINEAR))
         latencies.append(result.latency_ms)
         all_files.append(path)
 
@@ -124,7 +149,7 @@ def evaluate_category(
     # Pixel-level metrics need a ground-truth mask per test image.
     pixel_auroc_value = float("nan")
     pro_value = float("nan")
-    if mask_paths:
+    if len(mask_paths) == len(bad_files):
         masks = load_ground_truth_masks(all_files, mask_paths, maps)
         # The predictions must be the model's anomaly maps -- scoring the
         # ground-truth masks against themselves would always return 1.0.
@@ -163,6 +188,7 @@ def evaluate_category(
             ),
             "threshold": calib["threshold"],
             "pixel_threshold": calib["pixel_threshold"],
+            "metric_map_size": config.input_size,
         },
         good_image_scores={
             "mean": calib["good_score_mean"],
@@ -171,14 +197,25 @@ def evaluate_category(
             "median": calib["good_score_median"],
         },
         threshold=calib["threshold"],
+        samples=[
+            {
+                "image": str(path.relative_to(cat_dir.resolve())),
+                "label": "anomaly" if label else "good",
+                "score": float(score),
+                "predicted_anomaly": bool(score > calib["threshold"]),
+                "latency_ms": float(latency),
+            }
+            for path, label, score, latency in zip(all_files, labels, scores, latencies)
+        ],
     )
 
-    if not mask_paths:
+    if len(mask_paths) != len(bad_files):
         report.notes.append(
-            "Pixel-level metrics unavailable: no ground-truth masks were "
-            "found for this category. Image-level AUROC and good-image FPR "
-            "are unaffected and are the numbers to trust here."
+            f"Pixel metrics unavailable: {len(bad_files) - len(mask_paths)} "
+            "defective test images lack ground-truth masks."
         )
+    if max_test:
+        report.notes.append("Partial test subset (--max-test); not a full-category benchmark.")
     return report
 
 
@@ -189,10 +226,12 @@ def load_manifest(cat_dir: Path) -> list[dict] | None:
         return None
     try:
         payload = json.loads(manifest_path.read_text())
-    except json.JSONDecodeError:
-        return None
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Malformed manifest: {manifest_path}") from exc
     samples = payload.get("samples")
-    return samples if isinstance(samples, list) else None
+    if not isinstance(samples, list):
+        raise ValueError(f"Manifest has no samples list: {manifest_path}")
+    return samples
 
 
 def load_ground_truth_masks(
@@ -256,6 +295,11 @@ def main() -> None:
     # Aggregate.
     summary = {
         "dataset": "MVTec AD",
+        "protocol": "train/good only; test/good and test/defects only; duplicate-content check",
+        "metric_protocol": "image AUROC; pixel AUROC; region PRO area over measured pixel FPR 0-0.3, divided by 0.3",
+        "partial_test": args.max_test is not None,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "git_commit": subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip(),
         "backbone": args.backbone,
         "input_size": args.input_size,
         "coreset_percentage": args.coreset_percentage,
@@ -271,7 +315,7 @@ def main() -> None:
         "categories": [r.model for r in reports],
     }
     if all(not np.isnan(r.metrics["aupro"]) for r in reports):
-        summary["mean_aupro"] = float(np.mean([r.metrics["aupro"] for r in reports]))
+        summary["mean_aupro_0_3"] = float(np.mean([r.metrics["aupro"] for r in reports]))
         summary["mean_pixel_auroc"] = float(
             np.mean([r.metrics["pixel_auroc"] for r in reports])
         )

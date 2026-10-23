@@ -9,8 +9,7 @@ Streamlit demo that compared one test image against one good image. The
 algorithm underneath was a rough sketch of PatchCore with several
 substantive bugs (single-image memory bank, no coreset, no multi-scale
 aggregation, aspect-ratio distortion, and a heatmap that was misaligned with
-the source image). Argus is a faithful, calibrated, deployable implementation
-of that idea.
+the source image). Argus is a calibrated local prototype of that idea.
 
 ---
 
@@ -22,29 +21,28 @@ of that idea.
 | No coreset subsampling | Greedy coreset selection (Park et al., 2021) | Keeps the bank small enough for an edge box |
 | 224×224 squash | Aspect-preserving letterbox + inverse mapping | The original's heatmap landed on the wrong pixels |
 | Single feature layer | Multi-scale (layer2 + layer3) with patch aggregation | Tiny scratches and large defects both survive |
-| Threshold: none | Leave-one-out calibration with a safety margin | Without this, **95% of good parts get rejected** |
+| Threshold: none | Leave-one-out calibration with a safety margin | Avoids circular training-image scores |
 | k-NN, 1 neighbour | k-NN with the paper's local-neighbourhood reweighting | Fewer false positives on dense regions |
 | No localisation | Connected-component defects with pixel coordinates | "Defect detected" is not actionable |
 | No evaluation | MVTec AD protocol: image AUROC, pixel AUROC, AUPRO, FPR | Claims you can check |
-| No deployment | FastAPI + React console + Docker | Runs on a factory network |
+| No deployment | FastAPI + React console + Dockerfile | Local inspection workflow |
 
 ---
 
 ## Measured results
 
-The [15-category MVTec AD summary](docs/benchmark_summary.json) records
-**0.9805 mean image AUROC, 1.05% mean good-image false-positive rate, and
-34.4 ms/image** for a ResNet-18 backbone at 256×256 on CPU. It includes
-per-category sample counts and scores, the evaluation protocol, and a SHA-256
-of the local raw output. This is the run to cite in a résumé. Earlier
-exploratory runs in this repository used different settings and must not be
-combined with this summary.
+The prior 15-category summary was invalidated on 2026-10-22: its evaluator
+included training good images in the test set, and its PRO axis was not a
+measured pixel false-positive rate. **Do not cite its 0.9805 image AUROC,
+1.05% good-image false-positive rate, or 34.4 ms/image in a résumé.**
+The corrected evaluator requires a disjoint test split and computes PRO
+against measured background false positives. See the
+[evaluation protocol](docs/EVALUATION_PROTOCOL.md) and
+[résumé evidence](docs/RESUME_EVIDENCE.md) for verified results.
 
 Reproduce with:
 
 ```bash
-python scripts/prepare_mvtec.py --source <hf_mirror> --out data/mvtec_ad
-python scripts/build_mvtec_manifest.py --source <hf_mirror> --out data/mvtec_ad
 python scripts/evaluate_mvtec.py --data data/mvtec_ad --categories all \
     --backbone resnet18 --out results/mvtec_resnet18.json
 ```
@@ -57,6 +55,11 @@ discipline, and measuring the false reject rate on your own parts.
 ---
 
 ## Quick start
+
+For the reproducible research demo, place the MVTec AD `metal_nut` subset
+under `data/mvtec_ad/metal_nut` and run `./scripts/run_local_demo.sh`.
+See [the evidence page](docs/RESUME_EVIDENCE.md) for the data source,
+noncommercial license, results, and demo steps.
 
 ```bash
 # 1. Install
@@ -94,8 +97,8 @@ guessing:
 python scripts/sweep_threshold.py --data data/mvtec_ad --categories grid,pill,screw
 ```
 
-The defaults (`quantile=0.95`, `margin=0.10`) were chosen from that sweep:
-they hold the false reject rate near 1% while keeping recall around 72%.
+The default threshold is a starting point. Report recall and false rejects
+on a disjoint test set before setting an operating target.
 
 ### Using the API
 
@@ -157,18 +160,15 @@ universal "anomaly score" that means defective.
 
 The trap: scoring a *training* image against a bank that contains its own
 patches is circular. Those patches score ~0, the threshold comes out far too
-low, and then a brand-new good part gets rejected. Measured on MVTec AD,
-that mistake produced a **95% false positive rate on good parts**.
+low, and then a brand-new good part can be rejected.
 
 Argus calibrates by **leave-one-out**: each training image is scored against
 the bank with its own patches masked out, so every training image gives an
 honest estimate of what an unseen good part scores. A safety margin is then
 added to cover the spread between the training population and the line.
 
-**2. Per-SKU models.** A multi-class model over 380 categories loses 12
-AUROC points against per-category models. A coreset memory bank is tiny
-(1–10% of features), so one bank per SKU is cheap. Adding a SKU is a data
-operation, not a retraining project.
+**2. Per-part models.** One memory bank per part family avoids mixing
+unrelated appearances. Its size and fit time must be measured per dataset.
 
 **3. Normalising the image.** The original demo squashed every image to
 224×224, which turned circles into ellipses and put the heatmap on the wrong
@@ -177,28 +177,10 @@ back through the same transform.
 
 ### Exploratory comparison against the original implementation
 
-The rebuild was compared locally against the original demo's algorithm, re-implemented
-faithfully in `scripts/compare_baseline.py` (single-image memory bank,
-224×224 squash, avg-pooled features, no threshold) and run over the same
-data and split. The baseline is given the most favourable defensible
-threshold — the worst good training image — so it is not handicapped.
-
-| Metric | Original | Rebuild | Delta |
-|---|---|---|---|
-| Image AUROC | 0.7428 | **0.9821** | **+0.2393** |
-| Recall | 0.5052 | **0.9212** | **+0.4161** |
-| Precision | 0.7650 | **0.9668** | **+0.2018** |
-| False reject rate | 0.2070 | **0.1014** | −0.1056 |
-
-These numbers are from a separate exploratory run whose raw comparison output
-is not published. Reproduce and publish that artifact before citing the
-deltas externally. They do not describe the published 0.9805 AUROC run.
-
-Reproduce with:
-
-```bash
-python scripts/compare_baseline.py --data data/mvtec_ad --categories all
-```
+`scripts/compare_baseline.py` remains an exploratory comparison. Its old
+figures are unverified and are not résumé evidence. The current
+[metal-nut report](docs/RESUME_EVIDENCE.md) gives the held-out result for
+this implementation without an unsupported improvement claim.
 
 ---
 
@@ -304,9 +286,9 @@ docker run -p 8000:8000 -v argus-data:/data -e ARGUS_DATA_DIR=/data argus
 ```
 
 For a factory-floor box, the API and console are one process. Model training
-is the expensive step (30–60s for 40 images on CPU) and happens on demand;
-inference is ~35ms per part on CPU, ~2ms on a modern GPU. For line-rate
-inspection, run the API on a GPU box behind a camera gateway.
+is the expensive step and happens on demand. The current metal-nut run fit
+220 images in 31.3 seconds and averaged 31.7 ms per image on this local CPU.
+GPU and line-rate performance have not been measured for this build.
 
 ### Configuration
 
@@ -321,8 +303,7 @@ inspection, run the API on a GPU box behind a camera gateway.
 
 ## Deployment checklist
 
-The literature and the pilot data are consistent on this: most AI inspection
-pilots fail for reasons that have nothing to do with the model.
+Commissioning requires capture control and a later held-out dataset.
 
 **Before training**
 - [ ] Fix the capture rig: constant pose (fixture or trigger-indexed), locked exposure/gain/white balance.

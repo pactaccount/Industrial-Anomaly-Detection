@@ -131,5 +131,7 @@
       "mean_latency_ms": 33.58712650480015
     }
   ],
-  "limitations": "Benchmark only. No production camera, SKU, or held-out factory validation."
+  "limitations": "Benchmark only. No production camera, SKU, or held-out factory validation.",
+  "valid_for_resume": false,
+  "invalidated_reason": "train/good images were included in test metrics; PRO used a fabricated FPR axis"
 }

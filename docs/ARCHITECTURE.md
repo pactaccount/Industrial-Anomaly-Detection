@@ -116,10 +116,7 @@ the bank. There is no universal "anomaly score" that means defective.
 
 **The trap.** Scoring a training image against a bank that contains its own
 patches is circular. Those patches score a distance of ~0, the threshold
-comes out far too low, and a brand-new good part gets rejected. Measured on
-MVTec AD, that mistake produced a **95% false positive rate on good parts**
-— which would have made the product unusable while looking perfectly
-reasonable in the code.
+comes out far too low, and a brand-new good part can be rejected.
 
 **The fix.** Leave-one-out: score each training image against the bank with
 its own patches masked out. Every training image then gives an honest
@@ -251,7 +248,7 @@ Measured on this machine (Apple M5 Pro, CPU only, no GPU available):
 
 | Operation | Time |
 |---|---|
-| Inference, ResNet-18 @ 256² | ~34 ms/part |
+| Inference, ResNet-18 @ 256² | 31.7 ms/image mean on corrected local metal-nut run |
 | Inference, WideResNet-50-2 @ 256² | ~120 ms/part |
 | Model training, 40 images | ~40 s (ResNet-18) |
 | Coreset selection, 40k features → 4k | ~8 s |

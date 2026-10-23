@@ -132,6 +132,9 @@ class Gateway:
         ``marker`` -- drop a ``<stem>.REJECT`` marker file next to the image
         ``stdout`` -- print a line the line PLC can parse
         """
+        if self.dry_run:
+            print(f"[dry-run] would reject {path.name}", flush=True)
+            return
         if self.on_reject == "marker":
             marker = path.with_suffix(".REJECT")
             marker.write_text(
@@ -149,8 +152,6 @@ class Gateway:
                 f"defects={len(result.get('defects', []))}",
                 flush=True,
             )
-        if self.dry_run:
-            print(f"[dry-run] would reject {path.name}", flush=True)
 
     # ------------------------------------------------------------------
     def run_folder(self, watch_dir: Path, poll_interval: float = 0.25) -> None:

@@ -322,4 +322,5 @@ def reject(result):
 ```
 
 For line-rate use, batch the requests or run the gateway on the same host as
-the API to avoid the network round trip — inference is ~34 ms/part on CPU.
+the API to avoid the network round trip. The current local metal-nut run
+averaged 31.7 ms/image on CPU; measure p95 latency on target hardware.

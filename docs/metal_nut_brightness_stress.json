@@ -1,0 +1,36 @@
+{
+  "dataset": "MVTec AD metal_nut test split",
+  "intervention": "PIL brightness scaling of RGB pixels at 0.8, 1.0, 1.2",
+  "threshold": 5.18878047466278,
+  "model": "ResNet-18 PatchCore-style model trained on 220 MVTec AD metal_nut train/good images",
+  "interpretation": "synthetic sensitivity check only; not real lighting or camera validation",
+  "rows": [
+    {
+      "brightness_factor": 0.8,
+      "good_n": 22,
+      "false_rejects": 0,
+      "false_reject_rate": 0.0,
+      "defect_n": 93,
+      "detected_defects": 89,
+      "defect_recall": 0.956989247311828
+    },
+    {
+      "brightness_factor": 1.0,
+      "good_n": 22,
+      "false_rejects": 2,
+      "false_reject_rate": 0.09090909090909091,
+      "defect_n": 93,
+      "detected_defects": 89,
+      "defect_recall": 0.956989247311828
+    },
+    {
+      "brightness_factor": 1.2,
+      "good_n": 22,
+      "false_rejects": 3,
+      "false_reject_rate": 0.13636363636363635,
+      "defect_n": 93,
+      "detected_defects": 90,
+      "defect_recall": 0.967741935483871
+    }
+  ]
+}

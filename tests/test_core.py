@@ -261,10 +261,30 @@ def test_aupro_is_not_trivially_perfect():
 
     labels = np.array([True])
     assert aupro(labels, [mask], [wrong]) < 0.05
-    # And a random prediction should land near chance.
+    # For an FPR limit of 0.3, random region overlap rises roughly with
+    # FPR, so the normalised area is approximately 0.15.
     rng = np.random.default_rng(0)
     noise = rng.random((64, 64))
-    assert 0.3 < aupro(labels, [mask], [noise]) < 0.7
+    assert 0.08 < aupro(labels, [mask], [noise]) < 0.22
+
+
+def test_aupro_counts_separate_regions_and_real_background_fpr():
+    mask = np.zeros((20, 20), dtype=bool)
+    mask[2:4, 2:4] = True
+    mask[12:14, 12:14] = True
+    good = np.zeros((20, 20), dtype=float)
+    good[mask] = 2.0
+    partial = np.zeros((20, 20), dtype=float)
+    partial[2:4, 2:4] = 2.0
+    # Both regions count equally; finding only one gives half PRO at FPR 0.
+    assert aupro(np.array([True]), [mask], [good]) == pytest.approx(1.0)
+    assert aupro(np.array([True]), [mask], [partial]) == pytest.approx(0.5)
+
+
+def test_aupro_rejects_invalid_inputs():
+    mask = np.zeros((8, 8), dtype=bool)
+    with pytest.raises(ValueError):
+        aupro(np.array([True]), [mask], [mask.astype(float)])
 
 
 def test_pixel_auroc_is_not_trivially_perfect():

@@ -64,11 +64,8 @@ class ModelConfig:
     # spread of the good-image scores. Trades recall for a lower false
     # reject rate on good parts.
     #
-    # The default (0.10) was chosen by sweeping the (quantile, margin) space
-    # on MVTec AD: it holds the false reject rate near 1% while keeping
-    # recall around 72%. A larger margin drives the false reject rate to
-    # zero but costs a lot of recall -- the previous default of 0.25 gave
-    # 52% recall for no measurable gain.
+    # Historical default. Re-evaluate on rights-cleared, later-captured
+    # images before using it as a plant operating point.
     calibration_margin: float = 0.10
     # Percentile of an image's own scores used as the relative floor for
     # the defect mask. Higher is tighter; lower finds smaller defects.
@@ -263,8 +260,7 @@ class AnomalyDetector:
         Scoring a training image against a bank that contains its own
         patches is circular: those patches score a distance of ~0, so the
         resulting threshold is far too low and a brand-new good part gets
-        rejected. (Measured on MVTec AD, that mistake produced a 95% false
-        positive rate on good parts.)
+        rejected.
 
         The fix is leave-one-out: score each training image against the bank
         while excluding that image's own patches. Every training image then

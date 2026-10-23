@@ -66,89 +66,105 @@ def auroc(labels: np.ndarray, scores: np.ndarray) -> float:
 def aupro(
     labels: np.ndarray,
     masks: list[np.ndarray],
-    predictions: list[np.ndarray] | None = None,
+    predictions: list[np.ndarray],
+    max_fpr: float = 0.3,
 ) -> float:
-    """Area under the per-region ROC curve (PRO).
+    """PRO area up to *measured* pixel FPR, normalised by ``max_fpr``.
 
-    The PRO metric, from the MVTec AD paper, is the standard way to compare
-    anomaly localisation methods. For each anomaly it measures the overlap
-    between the normalised prediction and the ground-truth region, over a
-    range of thresholds, and averages across anomalies. Unlike pixel AUROC
-    it weights every *defect region* equally, so a huge defect does not
-    dominate the score.
-
-    Args:
-        labels: ``(N,)`` boolean, True for anomalous images.
-        masks: list of ``(H, W)`` boolean ground-truth masks, one per image.
-        predictions: list of ``(H, W)`` float anomaly maps, one per image.
-            These are the model's predictions. If omitted, the masks are
-            used as the predictions, which measures the metric against
-            itself and always returns 1.0 -- that is useful only as a
-            sanity check on the metric, never as a reported result.
-
-    Returns:
-        The PRO value in ``[0, 1]``, or NaN if there are no anomalies.
+    Each connected defect region has equal weight. Background pixels from
+    both good and defective test images determine the false-positive axis.
+    This follows the MVTec AD PRO convention; no mask is ever used as its own
+    prediction. A histogram of score ranks gives exact curve changes for
+    typical 8-bit test maps without repeatedly thresholding every image.
     """
-    labels = np.asarray(labels).astype(bool)
-    if not labels.any():
+    from scipy import ndimage
+
+    if len(labels) != len(masks) or len(labels) != len(predictions):
+        raise ValueError("labels, masks and predictions must align")
+    if not 0 < max_fpr <= 1:
+        raise ValueError("max_fpr must be in (0, 1]")
+    if not predictions:
+        return float("nan")
+    region_scores: list[np.ndarray] = []
+    background_scores: list[np.ndarray] = []
+    for label, mask, scores in zip(labels, masks, predictions):
+        mask = np.asarray(mask, dtype=bool)
+        scores = np.asarray(scores, dtype=np.float64)
+        if mask.shape != scores.shape or not np.isfinite(scores).all():
+            raise ValueError("mask and finite anomaly map must have matching shapes")
+        if bool(label) != bool(mask.any()):
+            raise ValueError("image label and ground-truth mask disagree")
+        background_scores.append(scores[~mask].ravel())
+        if label:
+            regions, count = ndimage.label(mask)
+            for region_id in range(1, count + 1):
+                region_scores.append(scores[regions == region_id].ravel())
+    if not region_scores:
         return float("nan")
 
-    thresholds = np.linspace(0, 1, 101)
-    ratios = np.zeros(len(thresholds))
-    n_used = 0
-
-    for idx in np.where(labels)[0]:
-        mask = np.asarray(masks[idx]).astype(bool)
-        if mask.sum() == 0:
-            continue
-        if predictions is None:
-            pred = mask.astype(np.float64)
-        else:
-            pred = np.asarray(predictions[idx], dtype=np.float64)
-        # Normalise the prediction map to [0, 1] over the whole image.
-        pred = (pred - pred.min()) / (pred.max() - pred.min() + 1e-12)
-        for t_idx, t in enumerate(thresholds):
-            binary = pred >= t
-            # Proportion of the ground-truth region that was found.
-            found = (binary & mask).sum() / mask.sum()
-            ratios[t_idx] += found
-        n_used += 1
-
-    if n_used == 0:
+    background = np.concatenate(background_scores)
+    if not len(background):
         return float("nan")
-    per_region = ratios / n_used
-    # PRO integrates over the FPR range, normalised to [0, 1].
-    fpr = np.linspace(0, 1, len(thresholds))
-    return float(np.trapezoid(per_region, fpr))
+    # Relevant thresholds are the background score quantiles up to max_fpr.
+    # Include all distinct scores for small tests and a fixed grid for large
+    # benchmarks to keep memory and runtime bounded.
+    unique = np.unique(background)
+    if len(unique) <= 2048:
+        thresholds = unique
+    else:
+        thresholds = np.unique(np.quantile(background, np.linspace(1 - max_fpr, 1, 2048)))
+    thresholds = np.r_[np.inf, thresholds[::-1], -np.inf]
+    bg_sorted = np.sort(background)
+    fprs = np.array([(len(background) - np.searchsorted(bg_sorted, t, side="right")) / len(background) for t in thresholds])
+    pros = np.zeros(len(thresholds), dtype=np.float64)
+    for region in region_scores:
+        ordered = np.sort(region)
+        pros += (len(region) - np.searchsorted(ordered, thresholds, side="right")) / len(region)
+    pros /= len(region_scores)
+    # Duplicated FPR coordinates can have different PRO; keep the best
+    # attainable overlap at that operating point.
+    order = np.argsort(fprs, kind="mergesort")
+    fprs, pros = fprs[order], pros[order]
+    distinct = np.unique(fprs)
+    best = np.array([pros[fprs == x].max() for x in distinct])
+    # A tied score can jump directly from FPR 0 to FPR 1. Interpolating
+    # across that unattainable interval would award spurious localisation.
+    # Hold the last attainable PRO until the next threshold change.
+    inside = distinct < max_fpr
+    x = np.r_[distinct[inside], max_fpr]
+    y = best[inside]
+    return float(np.sum(np.diff(x) * y) / max_fpr)
 
 
 def pixel_auroc(
     labels: np.ndarray,
     masks: list[np.ndarray],
-    predictions: list[np.ndarray] | None = None,
+    predictions: list[np.ndarray],
 ) -> float:
     """Pixel-level AUROC, pooled over all images.
 
     Args:
         labels: ``(N,)`` boolean, True for anomalous images.
         masks: list of ``(H, W)`` boolean ground-truth masks.
-        predictions: list of ``(H, W)`` float anomaly maps. If omitted the
-            masks are used as their own predictions, which always gives
-            1.0 and is not a real measurement.
+        predictions: list of ``(H, W)`` float anomaly maps.
 
     Returns:
         The pixel-level AUROC, or NaN if there is nothing to score.
     """
     labels = np.asarray(labels).astype(bool)
+    if len(labels) != len(masks) or len(labels) != len(predictions):
+        raise ValueError("labels, masks and predictions must align")
     flat_labels: list[bool] = []
     flat_scores: list[float] = []
     for idx in range(len(labels)):
-        if predictions is None:
-            flat_labels.append(np.asarray(masks[idx]).astype(bool).ravel())
-            flat_scores.append(np.asarray(masks[idx]).ravel())
-        else:
-            flat_labels.append(np.asarray(masks[idx]).astype(bool).ravel())
-            flat_scores.append(np.asarray(predictions[idx]).ravel())
+        mask = np.asarray(masks[idx], dtype=bool)
+        score = np.asarray(predictions[idx], dtype=np.float64)
+        if mask.shape != score.shape or not np.isfinite(score).all():
+            raise ValueError("mask and finite anomaly map must have matching shapes")
+        if labels[idx] != mask.any():
+            raise ValueError("image label and ground-truth mask disagree")
+        flat_labels.append(mask.ravel())
+        flat_scores.append(score.ravel())
     if not flat_scores:
         return float("nan")
     return auroc(np.concatenate(flat_labels), np.concatenate(flat_scores))
@@ -281,6 +297,7 @@ class EvaluationReport:
     good_image_scores: dict[str, float] = field(default_factory=dict)
     threshold: float | None = None
     notes: list[str] = field(default_factory=list)
+    samples: list[dict] = field(default_factory=list)
 
     def to_json(self, path: str | Path) -> Path:
         path = Path(path)
