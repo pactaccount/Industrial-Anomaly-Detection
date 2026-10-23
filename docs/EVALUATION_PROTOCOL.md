@@ -35,7 +35,18 @@ and latency. The model input and evaluated anomaly maps are 256 × 256 pixels.
   --data data/mvtec_ad --categories metal_nut --backbone resnet18 \
   --input-size 256 --coreset-percentage 0.1 \
   --out results/metal_nut_corrected.json
+
+./venv/bin/python scripts/compare_baseline.py \
+  --data data/mvtec_ad --categories metal_nut --backbone resnet18 \
+  --out results/metal_nut_baseline.json
 ```
+
+The baseline comparison is exploratory. The original method has a
+single-image bank, mean patch distance, 224-pixel square resizing, and a
+threshold from 20 training normals; Argus uses the 220-image coreset,
+maximum/reweighted patch score, 256-pixel letterboxing, and leave-one-out
+calibration. It is evidence about the combined engineering changes, not a
+controlled ablation of any one component.
 
 ## Why these metrics
 

@@ -177,10 +177,13 @@ back through the same transform.
 
 ### Exploratory comparison against the original implementation
 
-`scripts/compare_baseline.py` remains an exploratory comparison. Its old
-figures are unverified and are not résumé evidence. The current
-[metal-nut report](docs/RESUME_EVIDENCE.md) gives the held-out result for
-this implementation without an unsupported improvement claim.
+The earlier comparison figures were unverified. The new
+[metal-nut system comparison](docs/metal_nut_baseline.json) uses the same
+115-image test split and ResNet-18 backbone for both methods. It is a
+comparison of the complete original and rebuilt systems, including different
+memory sizes, threshold methods, and input resolutions. The current
+[evidence page](docs/RESUME_EVIDENCE.md) gives the complete operating-point
+tradeoff.
 
 ---
 

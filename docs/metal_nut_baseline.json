@@ -1,0 +1,47 @@
+{
+  "summary": {
+    "n_categories": 1,
+    "original": {
+      "auroc": 0.6006842619745846,
+      "fpr": 0.045454545454545456,
+      "recall": 0.23655913978494625,
+      "precision": 0.9565217391304348
+    },
+    "rebuild": {
+      "auroc": 0.9921798631476051,
+      "fpr": 0.09090909090909091,
+      "recall": 0.956989247311828,
+      "precision": 0.978021978021978,
+      "f1": 0.967391304347826
+    }
+  },
+  "per_category": [
+    {
+      "category": "metal_nut",
+      "n_train": 220,
+      "n_test": 115,
+      "original": {
+        "auroc": 0.6006842619745846,
+        "threshold": 1.8725657768998758,
+        "fpr": 0.045454545454545456,
+        "recall": 0.23655913978494625,
+        "precision": 0.9565217391304348
+      },
+      "rebuild": {
+        "auroc": 0.9921798631476051,
+        "threshold": 5.18878047466278,
+        "fpr": 0.09090909090909091,
+        "recall": 0.956989247311828,
+        "precision": 0.978021978021978,
+        "f1": 0.967391304347826
+      }
+    }
+  ],
+  "provenance": {
+    "dataset_source": "https://huggingface.co/datasets/MSherbinii/mvtec-ad-metal-nut",
+    "mirror_revision": "8db7371c35a94709cbb3e69ac69f80d2716e2f8a",
+    "dataset_tree_sha256": "cbf7517ff0ba11834d7a6f933fa4479c149cd40813e002a2f1d1021c1209e9f3",
+    "comparison_script_sha256": "628adcdf22d4dda209d215ec8a5539c24f3cad3f423467d18bc418a5552294ed",
+    "interpretation": "exploratory system-level comparison, not isolated model ablation or field impact"
+  }
+}

@@ -14,9 +14,11 @@ This script runs both algorithms over the same data and reports the same
 metrics, so the difference is attributable to the algorithm rather than to
 the data or the split.
 
-For the baseline we do the only thing the original could do: pick a
-threshold. We use the most favourable defensible choice -- the score of
-the worst good training image -- so the baseline is not handicapped.
+For the baseline we add a threshold, which the original did not have:
+the maximum score of the first 20 normal training images. Both sides use
+the same frozen backbone and official test split. This is a system-level
+comparison, not an isolated ablation: memory size, preprocessing, score
+aggregation, threshold calibration, and input resolution also differ.
 
 Usage::
 
@@ -41,20 +43,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from argus.core.evaluation import auroc, f1_at_threshold  # noqa: E402
 from argus.core.model import AnomalyDetector, ModelConfig  # noqa: E402
+from scripts.evaluate_mvtec import collect_test_samples  # noqa: E402
 
 
 class OriginalAlgorithm:
     """A faithful reimplementation of the original demo's algorithm.
 
-    Deliberately keeps every shortcut the original took, so the comparison
-    is against the real thing and not a strawman.
+    Retains the original single-image and pooled-feature shortcuts, with a
+    selectable backbone to permit a same-ResNet comparison.
     """
 
-    def __init__(self, size: int = 224):
+    def __init__(self, size: int = 224, backbone: str = "resnet18"):
         self.size = size
-        self.model = models.wide_resnet50_2(
-            weights=models.Wide_ResNet50_2_Weights.IMAGENET1K_V1
-        )
+        weights = {
+            "resnet18": models.ResNet18_Weights.IMAGENET1K_V1,
+            "wide_resnet50_2": models.Wide_ResNet50_2_Weights.IMAGENET1K_V1,
+        }
+        if backbone not in weights:
+            raise ValueError(f"Unsupported baseline backbone: {backbone}")
+        self.model = getattr(models, backbone)(weights=weights[backbone])
         self.model.eval()
         self.features = {}
         for name in ("layer2", "layer3"):
@@ -66,6 +73,7 @@ class OriginalAlgorithm:
         self.std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
         self.bank = None
         self.grid = None
+        self.knn = None
 
     def embed(self, image: Image.Image) -> np.ndarray:
         """The original's embedding: avg-pool, resize, concat, flatten."""
@@ -96,24 +104,23 @@ class OriginalAlgorithm:
         features, grid = self.embed(images[0])
         self.bank = features
         self.grid = grid
+        from sklearn.neighbors import NearestNeighbors
+
+        self.knn = NearestNeighbors(n_neighbors=1, algorithm="ball_tree")
+        self.knn.fit(self.bank)
         return self
 
     def score(self, image: Image.Image) -> float:
         """The original's score: mean k-NN distance (sklearn, n=1)."""
-        from sklearn.neighbors import NearestNeighbors
-
         features, _ = self.embed(image)
-        knn = NearestNeighbors(n_neighbors=1, algorithm="ball_tree")
-        knn.fit(self.bank)
-        distances, _ = knn.kneighbors(features)
+        distances, _ = self.knn.kneighbors(features)
         return float(distances.mean())
 
     def threshold_from_good(self, images: list[Image.Image]) -> float:
         """A threshold the original could not produce.
 
-        We use the most favourable defensible choice for the baseline: the
-        worst-scoring good image, which by construction gives zero false
-        rejects on the training set.
+        We use the worst-scoring image from the normal calibration subset.
+        That gives zero rejects on that subset but no guarantee for the rest.
         """
         return max(self.score(img) for img in images)
 
@@ -123,22 +130,15 @@ def evaluate_category(
 ) -> dict:
     cat_dir = data_root / category
     train_files = sorted((cat_dir / "train" / "good").glob("*.png"))
-    test_dir = cat_dir / "test"
+    good_files, bad_files, _ = collect_test_samples(cat_dir)
 
     def load(path):
         with Image.open(path) as img:
             return img.convert("RGB")
 
     train_images = [load(p) for p in train_files]
-    good_files, bad_files = [], []
-    for defect_dir in sorted(test_dir.iterdir()):
-        if not defect_dir.is_dir():
-            continue
-        files = sorted(defect_dir.glob("*.png"))
-        (good_files if defect_dir.name == "good" else bad_files).extend(files)
-
     # ---- Original algorithm ----
-    original = OriginalAlgorithm()
+    original = OriginalAlgorithm(backbone=config.backbone)
     original.fit(train_images)
     orig_threshold = original.threshold_from_good(train_images[:20])
     orig_scores = [original.score(load(p)) for p in good_files + bad_files]
@@ -172,6 +172,7 @@ def evaluate_category(
 
     return {
         "category": category,
+        "protocol": "same pretrained backbone and disjoint MVTec AD test split; original bank=one normal image, original calibration=first 20 normals at maximum score; rebuild bank=220 normals, LOO q95+margin; 224px original vs 256px rebuild",
         "n_train": len(train_files),
         "n_test": len(good_files) + len(bad_files),
         "original": {
@@ -199,7 +200,7 @@ def main() -> None:
         "--categories",
         default="bottle,grid,metal_nut,pill,screw,zipper,carpet,transistor",
     )
-    parser.add_argument("--backbone", default="wide_resnet50_2")
+    parser.add_argument("--backbone", default="resnet18")
     parser.add_argument("--input-size", type=int, default=256)
     parser.add_argument("--coreset-percentage", type=float, default=0.1)
     parser.add_argument("--out", default="results/baseline_comparison.json")

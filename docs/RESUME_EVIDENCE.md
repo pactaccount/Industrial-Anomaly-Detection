@@ -53,6 +53,16 @@ The four misses break down as **3 scratches and 1 color defect**. Bent and
 flip test examples were all flagged (25/25 and 23/23). This makes fine
 surface damage the clearest next modeling and capture target.
 
+An [exploratory same-ResNet-18 system comparison](metal_nut_baseline.json)
+against the original single-reference algorithm used the same 115 test
+images: image AUROC was 0.6007 for the original and 0.9922 for Argus.
+Original recall was 22/93 (23.7%) with 1/22 false rejects; Argus caught
+89/93 (95.7%) with 2/22 false rejects. This compares complete systems:
+memory size, preprocessing, score aggregation, threshold calibration,
+and 224/256-pixel input differ. It does not isolate the effect of one change
+or establish field impact; use the held-out Argus results as the primary
+résumé numbers.
+
 The [brightness stress report](metal_nut_brightness_stress.json) applies
 synthetic 0.8× and 1.2× brightness to the same held-out test images at the
 unchanged threshold. False rejects were 0/22, 2/22, and 3/22 at 0.8×,
