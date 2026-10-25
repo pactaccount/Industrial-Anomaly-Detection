@@ -96,11 +96,13 @@ def evaluate_category(
     category: str,
     config: ModelConfig,
     max_test: int | None = None,
+    dataset_label: str = "MVTec AD",
 ) -> EvaluationReport:
     """Train on the good split and evaluate on the test split."""
     cat_dir = data_root / category
     train_dir = cat_dir / "train" / "good"
-    train_files = sorted(train_dir.glob("*.png")) + sorted(train_dir.glob("*.jpg"))
+    train_files = sorted(p for p in train_dir.iterdir()
+                         if p.is_file() and p.suffix.lower() in {".png", ".jpg", ".jpeg"})
     if not train_files:
         raise ValueError(f"No training images for {category}")
 
@@ -168,7 +170,7 @@ def evaluate_category(
     )
 
     report = EvaluationReport(
-        dataset="MVTec AD",
+        dataset=dataset_label,
         model=f"{category} / {config.backbone}",
         n_train=len(train_files),
         n_test=len(labels_arr),
@@ -267,6 +269,8 @@ def main() -> None:
     parser.add_argument("--n-nearest-neighbours", type=int, default=1)
     parser.add_argument("--max-test", type=int, default=None)
     parser.add_argument("--out", default="results/mvtec_eval.json")
+    parser.add_argument("--dataset-label", default="MVTec AD",
+                        help="Report label when evaluating another dataset in MVTec layout, e.g. VisA")
     args = parser.parse_args()
 
     data_root = Path(args.data)
@@ -287,14 +291,15 @@ def main() -> None:
     for category in categories:
         print(f"\n=== {category} ===", flush=True)
         report = evaluate_category(
-            data_root, category, config, max_test=args.max_test
+            data_root, category, config, max_test=args.max_test,
+            dataset_label=args.dataset_label,
         )
         reports.append(report)
         print(report.summary(), flush=True)
 
     # Aggregate.
     summary = {
-        "dataset": "MVTec AD",
+        "dataset": args.dataset_label,
         "protocol": "train/good only; test/good and test/defects only; duplicate-content check",
         "metric_protocol": "image AUROC; pixel AUROC; region PRO area over measured pixel FPR 0-0.3, divided by 0.3",
         "partial_test": args.max_test is not None,
