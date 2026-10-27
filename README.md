@@ -335,6 +335,31 @@ pytest tests/ -q          # API + engine tests
 
 ---
 
+## Repository Structure
+
+```text
+Industrial_Anomaly_Detection/
+├── argus/                   # Core Python package
+│   ├── core/                # PatchCore engine, feature extraction, coreset subsampling
+│   ├── api/                 # FastAPI inspection server & telemetry
+│   └── storage/             # SQLite model metadata & inspection persistence
+├── scripts/                 # Evaluation & operational scripts
+│   ├── evaluate_mvtec.py    # MVTec AD benchmark evaluation engine
+│   ├── compare_baseline.py  # Comparative baseline evaluation harness
+│   ├── evaluate_capture_shift.py # Illumination sensitivity stress tests
+│   └── run_local_demo.sh    # Local demonstration startup script
+├── docs/                    # IEEE evaluation report and architecture documentation
+│   ├── IEEE_EVALUATION_REPORT.md  # Formal IEEE benchmark evaluation report
+│   ├── EVALUATION_PROTOCOL.md     # Ground-truth protocol & metrics definition
+│   └── RESUME_EVIDENCE.md         # Recruiter evidence & test logs
+├── web/                     # React / Vite human review console
+├── tests/                   # Deterministic unit and integration test suite
+└── results/                 # Evaluation outputs, logs, and benchmark summaries
+```
+
+---
+
+
 ## References
 
 * Bergmann et al., *Towards Total Recall in Industrial Anomaly Detection*, PatchCore — [arXiv:2106.08265](https://arxiv.org/abs/2106.08265)
